@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>课堂大乱斗：法理篇（1-3章）</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0f1020; color:#e8e8f0; font-family:"Microsoft YaHei",monospace;
+         display:flex; flex-direction:column; align-items:center; min-height:100vh; padding:16px; }
+  h1 { font-size:18px; color:#8fd3ff; margin-bottom:10px; letter-spacing:2px; }
+  #game { width:840px; max-width:96vw; background:#1a1c2c; border:4px solid #3a3f5e; image-rendering:pixelated; }
+  canvas { display:block; width:100%; }
+  #log { width:840px; max-width:96vw; margin-top:8px; background:#1a1c2c; border:3px solid #3a3f5e;
+         padding:8px 12px; font-size:12px; color:#8899bb; min-height:64px; line-height:1.6; }
+</style>
+</head>
+<body>
+<h1>⚔ 课堂大乱斗：法理篇（1-3章）</h1>
+<div id="game"><canvas id="cv" width="840" height="470"></canvas></div>
+<div id="log"></div>
+
+<script>
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+const W = 840, H = 470;
+function log(m){ document.getElementById('log').innerHTML = m; }
+
+/* ================= 像素小人与敌方头像 ================= */
+function makeSprite(grid, pal, scale){
+  const s = document.createElement('canvas');
+  s.width = grid[0].length*scale; s.height = grid.length*scale;
+  const c = s.getContext('2d');
+  grid.forEach((row,r)=>{ [...row].forEach((ch,col)=>{
+    if(pal[ch]){ c.fillStyle=pal[ch]; c.fillRect(col*scale,r*scale,scale,scale); } }); });
+  return s;
+}
+const SPRITES = { player: makeSprite([
+"......................",".........TTTT.........","........TTTTTT........","........TFFFFT........",
+"........TFEEFT........","........TFFFFT........",".........FFFF.........","........FFFFFF........",
+".......BBFFFFBB.......","......BBBFFFFBBB......",".....BBBbBBBBbBBB.....",".....BBBbBsBBbBBB.....",
+".....BBBbBsBBbBBB.....",".....BBBbBBBBbBBB.....","......BBBBSBBBB.......",".......BBBSBB.........",
+"........CBSB..........","........CBSB..........","........CSSC..........",".........CC...........",
+"........PPPP..........","........PPPP..........",".......NN..NN.........",".......N....N.........",
+"......NN....NN........","......................"],
+ {"T":"#3d2b1f","F":"#f2c99b","E":"#1a1c2c","B":"#2e6b8a","b":"#1f4a61","C":"#7ad0e8","P":"#3a3f5e","S":"#f4f1de","s":"#d64545","N":"#22233a"}, 4) };
+
+const PORTRAIT_SRC = {"gaoyao": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOAAAADgCAIAAACVT/22AAADjElEQVR4nO3du2oVQQCAYSMWkjp4Kb28gmAlWCkW6gMIYmNhF9IIYiWWYm8TBB9A7KwEsQj4Cl5KLfIAlj5ADrpwTrL/7n5feTjMTsLPFMPsnK3t7XOn+J+dnbMbH/Pw8M/Gx5yf02NPAP5FoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0rYmfZrpOA4Zzc+kj01ZQUkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJW3adzOt9PvTy7GnMJoLN5+NPYUNs4KSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEk7M/YExnT90euB3zzY353Z06fCCkqaQEkTKGkCJU2gpAmUNHczzYq7meBECZQ0gZImUNIESppASVv0aabLt54P/OaPjy9m9vSpsIKSJlDSBEqaQEkTKGkCJW2G20zDX0abivn9RcNZQUkTKGkCJU2gpAmUNIGSNsNtpuHWPCX06+f3gd+8eOnKOk+3zQRRAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkrbo00zDvdt7u94AX45+9ODVw/XGXAQrKGkCJU2gpAmUNIGSJlDSlvJLc/N77+xgf/foh35pDk6UQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJW0pdzOtfMVsKm/SrZz8QlhBSRMoaQIlTaCkCZQ0gZI2w7uZVlp5YdOkze8appWsoKQJlDSBkiZQ0gRKmkBJm8w207X7V0d8+pu7NzY+5uMPnzc+5nBf338b8enDWUFJEyhpAiVNoKQJlDSBkjbyS3Pjbh4Nd/72080POuo20/D//LgbUlZQ0gRKmkBJEyhpAiVNoKQdyzbTVDaPGGLcDSkrKGkCJU2gpAmUNIGSJlDSlnIF+JruPbkz9hQWygpKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkvYXRV1H2q+XPSwAAAAASUVORK5CYII=", "likui": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOAAAADgCAIAAACVT/22AAADdElEQVR4nO3cMWoUURzAYSMpZA8QErBRb2BlYRMLbTyCIOlFEBshWEnARgSxD4JHsNHCNCmsvIHaCMkRLD2AogOZ3fnN7veVy/Dmwf74F4/HbC0WO5f4n9t7V0Zf8/Ts1+hrrp/LU28A/kWgpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDStmZ9m2kZl4zWz6yvTZmgpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSNu9vM/3V+cnR1FuYzO7+4dRbGJkJSppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlbXvqDUzp1sHrgU9+OX6yZm+fCxOUNIGSJlDSBEqaQEkTKGm+zbRWfJsJVkqgpAmUNIGSJlDSBEraRt9mun7v+cAnv398sWZvnwsTlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJ2+jbTBe8JXT249vAJ/eu3Rj97RvCBCVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0jb6NtNw75++u9gCp3/+9ODVw4utuRFMUNIESppASRMoaQIlTaCkOWYaxJHQVExQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJ21osdqbewyqcnxxNvYWR7e4fTr2FVTBBSRMoaQIlTaCkCZQ0gZI2m2OmxzevTvj2g0d3R1/z+O2n0dcc7s3XnxO+fTgTlDSBkiZQ0gRKmkBJEyhpEx8zTXt4NNyzD59HX/Pl/Tujr7kM0x5ImaCkCZQ0gZImUNIESppASdtexqJzOTxiiOH/5jIOpExQ0gRKmkBJEyhpAiVNoKQt5Zhp/czl5tH6MUFJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0n4D0a47ABSrHNUAAAAASUVORK5CYII=", "marx": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOAAAADgCAIAAACVT/22AAADu0lEQVR4nO3dwapMcRzAcVdW9wHEEqUoJWsb10JZeAAp5QFsLGUlOzYeQCl5AAtlgY0HUIpSWPIWPMCddOrM3P93znw+y2k685+5336Lf+f8797+/sljUHV89ALgfwRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpJ0YvYP0+fHgzegnDHBzcGr2ENTNBSRMoaQIlTaCkCZQ0gZK2ty1nM+3y5tEmbMuGlAlKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQV72Zy49IowVucTFDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkbfDbTzGOYVp4l9OfjkznX3Gqnrj08/OImfuQjY4KSJlDSBEqaQEkTKGkCJe3E6AWMdPbGo4nv/Pnu8cI+fVuYoKQJlDSBkiZQ0gRKmkBJW+A209e/l0YvYc2W942mM0FJEyhpAiVNoKQJlDSBkrbAbabpZt4l9PvXj4nvPH3m3JxP//p36pKWxwQlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNJ2+m6m6V49eDnvAp8Ov3Tn2d1519wJJihpAiVNoKQJlDSBkiZQ0ha4zXRx78vhF1cebzT9zKMrT5/OWtMqMx+FW/k1l8cEJU2gpAmUNIGSJlDSBEra4G2mg4NbYxewC7b6RzZBSRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZS0BT40t9L0J+mCduT5uJVMUNIESppASRMoaQIlTaCk7e3vnxy9hqPw5+OT0UtYs1PXHo5ewlEwQUkTKGkCJU2gpAmUNIGStjXbTBcuXx346a/vn1/7NW8//772a0737fOKf34XZIKSJlDSBEqaQEkTKGkCJW3wNtPYzaPp3r99sfZrXr95b+3X3ISxG1ImKGkCJU2gpAmUNIGSJlDSNnI207ZsHjHF9L/mJjakTFDSBEqaQEkTKGkCJU2gpO3KEeAzbcudR8tjgpImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCk/QPjhk4KtmTgeAAAAABJRU5ErkJggg==", "judge": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOAAAADgCAIAAACVT/22AAAD2klEQVR4nO3cv4pUZxyAYVesppItNlpqunRCWgOSIpYBW0HSpQ2xCCwBQbbTJlW6EMgFaKdFENRS2CswKXerZS8hFzBDOHBm5ntn53nKw5w/nH35ih9nv4PF4ugaVF0f/QDwfwRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpN0Y/wPqdnn4Y/QjD3Lt3f/QjrJkVlDSBkiZQ0gRKmkBJEyhpB7uyN9M+D482YVcGUlZQ0gRKmkBJEyhpAiVNoKQVx0wmSqMEZ09WUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRu8N9PMbZhW7iV0/u5k4ulnN7+Z+Mvbl++nPtNkm7j7rQfHywc38ZK3xgpKmkBJEyhpAiVNoKQJlLQbox9gpE0Mj3bl7rvCCkqaQEkTKGkCJU2gpAmUtL0eM9397teJv/zn7fMrdvddYQUlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNL2+mummV8Jnf37eeIvb9/5cu1334TXv/20fPDZD18vH/z9zeXEa/748OaKa/7xaeLpVlDSBEqaQEkTKGkCJU2gpA0eM43dXnpPTH/JKydKY1lBSRMoaQIlTaCkCZQ0gZK2118zTffXz3/Ou8DH5UOPXz6Zd82RVn6jtAlWUNIESppASRMoaQIlTaCkHSwWR6OfYc3O352MfoRhbj043s6NVn73NP1f4aazgpImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIEStoV3AJ85f5EV2/Dpq1twzSWFZQ0gZImUNIESppASRMoaTszZjo8PJxz+lePXs45/e8X3885faVvn76ac/rMF3JxcTHn9K2xgpImUNIESppASRMoaQIlbfCYaeasZGu+ePjL+i86b8w00/Q3P3YgZQUlTaCkCZQ0gZImUNIEStpGxky7MjxiirF/TSsoaQIlTaCkCZQ0gZImUNIOFoujtV/UmGk/beK7JysoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIEStp/GxlT0RXVUAAAAAAASUVORK5CYII=", "rousseau": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOAAAADgCAIAAACVT/22AAAD1UlEQVR4nO3dIW9VdxyAYUpQHborJBODikqSqeGqtmRmBrcE9MQMhqRBLSQ1Mwj8EhwGg5iqWZitrOg2QQJ8gH2AfYA25CT33Pt/L+d55M3lnH9u3vzEL6eHnd3dvWtQdX30AeBTBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGk3Rh9gfhcXZ6OPMMzBwb3RR5iZCUqaQEkTKGkCJU2gpAmUtJ1teTfTkpdH67AtCykTlDSBkiZQ0gRKmkBJEyhpxTWTjdIowd2TCUqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGmD38204muYrnyX0MfTZxP/+X9f/TDxmzffvZn4zenWcff9o+PLH67jR94YE5Q0gZImUNIESppASRMoaTdGH2CkdSyPtuXu28IEJU2gpAmUNIGSJlDSBEraotdMd757OvGb//zx62d2921hgpImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaYt+mmnFp4Q+/Pv3xG/e+vru7HdfCBOUNIGSJlDSBEqaQEkTKGmD10xjXy+9EFv9I5ugpAmUNIGSJlDSBEqaQElb9NNM0718/PtqF/jz8kc//fZwtWsugglKmkBJEyhpAiVNoKQJlDRrpkmshEYxQUkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJW1nd3dv9Bk24ePps9FHmNn+0fHoI2yCCUqaQEkTKGkCJU2gpAmUtK1ZM7345f7Au39773D2a/51dj77Naf7+fnbgXefzgQlTaCkCZQ0gZImUNIEStrg/2lu7PJoui+/fzL/Rc8ezX/Nyab/8mMXUiYoaQIlTaCkCZQ0gZImUNLWsmbaluURU4xdSJmgpAmUNIGSJlDSBEqaQEkb/DTTxhz+uNLjSOfn8/+B26pHen0y10nKTFDSBEqaQEkTKGkCJU2gpC1mzXQ4/8uV3j94cPnD269ezX6jK418sdMGmaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNKW8kdzr08ezX/Rb7644sN13GjBTFDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEn7H8L+UlDjTzRkAAAAAElFTkSuQmCC", "aquinas": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOAAAADgCAIAAACVT/22AAADpElEQVR4nO3dMY8NURiAYYtqdQpBh2YLOo1EQaXVSBQSCu1GRCkURCki/gCJQqLZVkUh8QNo0aHS6fUkMnHv3vPenecpbyZnTjZvvuJkZnZjc/PIPqjaP3oD8C8CJU2gpAmUNIGSJlDSDo7ewEJ+fbg8egtr4NC5ndFb+H8mKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGStuGlOcpMUNIESppASRMoaQIlTaCkrfdLcxdOHx69hTXw7tPP0Vv4fyYoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCk7cFPgP94+2j0FoY5evHu6C0smQlKmkBJEyhpAiVNoKQJlLT1/gT4gq5uP5545atnd/bY3deFCUqaQEkTKGkCJU2gpAmUNE8z7SmeZoKVEihpAiVNoKQJlDSBkjbrp5lOXro38covbx7usbuvCxOUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEmb9dNMCz4l9P3r54lXHjtxaul3nwkTlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJm/XTTNO9vPNisQXe//3TtcfXF1tzFkxQ0gRKmkBJEyhpAiVNoKQ5ZprEkdAoJihpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKRtbG4eGb2HVfjx9tHoLSzZ0Yt3R29hFUxQ0gRKmkBJEyhpAiVNoKStzTHT+TOHB9792e3LS19z+8nO0tec7v3HnwPvPp0JSppASRMoaQIlTaCkCZS0wf9pbuzh0XQHzt7chVV3dmHNqab/5cceSJmgpAmUNIGSJlDSBEqaQEnblWOmdTk8YoqxB1ImKGkCJU2gpAmUNIGSJlDSduWlueAx04Onz0dvYcnu37oxegt/cszE7AiUNIGSJlDSBEqaQEkb/NLcymxtbS19zW9Xrvz94/HXr5d+ozkzQUkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpM3l20ysgG8zMTsCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpP0GIQdFFrbcBWYAAAAASUVORK5CYII=", "austin": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOAAAADgCAIAAACVT/22AAADgElEQVR4nO3cMWpUURSAYSOxmQXElFrY2igINpIl2ErAQndgGkmTJtjEHWghBFuXEAQRBG1sRbQzbsDGxgUY5OFM5v4z+b5yGO47kJ9TXF5mYzbbugRVl0cPAP8iUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIEStrm6AHmcnR0MHqEFbC3dzB6hP9ng5ImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIEStrGbLY1eoYFOz05HD3CMNs7+6NHWDAblDSBkiZQ0gRKmkBJEyhpq/0T4HM6/vR74jd3b11Zs6evChuUNIGSJlDSBEqaQEkTKGlr+DbT4Yefo0do2b9zdfQI/88GJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDS1vCf5h79ejHxmy9nj5fz9KU9yG8zwVIJlDSBkiZQ0gRKmkBJW8NrpummX0id6ce3r2d8eOaDrs/1oIvMBiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0i7020zTHT95Nd8B7/7+aPf5w/nOvBBsUNIESppASRMoaQIlTaCkuWaaxJXQKDYoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkbcxmW6NnWIbTk8PRIyzY9s7+6BGWwQYlTaCkCZQ0gZImUNIEStrKXDNdu3F74NPfPL258DPvP/u88DOn+/7l48CnT2eDkiZQ0gRKmkBJEyhpAiVt8DXT2Muj6d6/fb3wM+/ee7DwM8/D2AspG5Q0gZImUNIESppASRMoaZvnceiqXB4xxfS/5nlcSNmgpAmUNIGSJlDSBEqaQEk7l2um9bMqbx6tHxuUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJe0PSzA5hxzLVb4AAAAASUVORK5CYII=", "nuremberg": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOAAAADgCAIAAACVT/22AAAD/ElEQVR4nO3cP4tcVRyA4WxINVXYYqOlTQq7QNoIwSZYCbaCBC1sJSkCNmm2M02qFIoIfgDtbEJAbQKB9IJYJtWSysLKD7AXOebOzHl393nKy9w/O/tyih93zsFmc3QJqi7PfgD4LwIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZS0K7MfYPtevvxt9iNMc+PGrdmPsGVWUNIESppASRMoaQIlTaCkHZyVvZku8vBoF87KQMoKSppASRMoaQIlTaCkCZS04pjJRGmW4OzJCkqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGmT92ZauQ3T4l5Cr58dD57+6uoHg598982vo880bBd3f+f216cP7uJL3hsrKGkCJU2gpAmUNIGSJlDSrsx+gO37bvPF6Ef/Gb7o5vpbPcu+7378fPFv/2P4TjlWUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIl7Ry+zfT5398OfvJ/vPe07u57u9Hij+Y+WvejubmsoKQJlDSBkiZQ0gRKmkBJO4djpnHjA6lFr/76c+Hg4o3eW3Wjvfn58VenDz68e/P0wSe/vBm85pd3ri5c8/sXg6dbQUkTKGkCJU2gpAmUNIGSNnnMNHd76Qti/EtenCjNZQUlTaCkCZQ0gZImUNIEStqFfptp3I/3flh3gd9PH/r00WfrrjnT4jtKu2AFJU2gpAmUNIGSJlDSBErawWZzNPsZtuz1s+PZjzDN4t5Mu7D43tP4T+HGWUFJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiXtHG4Bvrg/0fnbsGlv2zDNZQUlTaCkCZQ0gZImUNIEStqZGTMdHh6uOf39Tx6tOf3pNx+vOX3Rh/d/WnP6yi/k5ORkzel7YwUlTaCkCZQ0gZImUNIEStrkMdPKWcneXLvzYPsXXTdmWmn8m587kLKCkiZQ0gRKmkBJEyhpAiVtJ2OmszI8YsTc/6YVlDSBkiZQ0gRKmkBJEyhpB5vN0dYvasx0Me3ivScrKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEravxAHWjYzRC6UAAAAAElFTkSuQmCC", "jiayi": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOAAAADgCAIAAACVT/22AAADiklEQVR4nO3dMY9MURiAYSsaUyoWJXqRqCW2ItlCLxLhHwiFZKnYREH0CiLxF7ZQkaxWo2dLKq3WD7CRa2fseWfnecqbO/eeTN58xcnJzNpstn4Mqo6PXgD8jUBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpJ0YvYC6Xz50cvYQl8Hnv1+glHJwJSppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaWuz2froNSzYjw/bo5cwzJmNrdFLWDATlDSBkiZQ0gRKmkBJEyhpy/0T4HPavPt04p07rx8dsbcvCxOUNIGSJlDSBEqaQEkTKGlOMx0pTjPBoRIoaQIlTaCkCZQ0gZK20qeZzl97PPHOb++fHLG3LwsTlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJW+nTTHOeEvq+93XinWfPXVj421eECUqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpK30aabp3t1/O98DPv156daL2/M9cyWYoKQJlDSBkiZQ0gRKmkBJs800iS2hUUxQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJW5vN1kev4TD8+LA9egkLdmZja/QSDoMJSppASRMoaQIlTaCkCZS0pdlmunrnwcC3v7zyc+HPvLd7auHPnO7jm+cD3z6dCUqaQEkTKGkCJU2gpAmUtMH/NDd282i609cf/nnxy+bmxI9f3NnZ5+ruq3mWNKfp3/zYDSkTlDSBkiZQ0gRKmkBJEyhp/2WbaVk2j5hi7IaUCUqaQEkTKGkCJU2gpAmUtMGnmZbFza19Th7tc8DpXz7OFCYoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlzU+AH9yzSzdGL+HoM0FJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKT9BkpBPp1lgXm8AAAAAElFTkSuQmCC", "montes": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOAAAADgCAIAAACVT/22AAAD1ElEQVR4nO3cIahUWRzA4X3LS4OmBRFhg2B4zU12o1gsYtlFYTdYxSKYH2wRq0FB0WaxLBstFjdpd9mwsGpWzHYdlwtzZ85v3nxfvMzce5j344Q/9529xeLEd1D1/egFwP8RKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpO2PXsD83rx5NXoJw5w589PoJczMDkqaQEkTKGkCJU2gpAmUtL1tOZtpl4dH67AtAyk7KGkCJU2gpAmUNIGSJlDSimMmE6VRgrMnOyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQNPptpxWOYlp4l9O754cSvf/zx4sRPHvv3j4mfnG4dTz95/vbXF9fxI2+MHZQ0gZImUNIESppASRMoaUdwzHT48v0q9zx6rvzwdpWvGzPBNwmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEra/ugFzO/XT/cnfvLB4rfNPH1jD1r6T3NXVntlbCw7KGkCJU2gpAmUNIGSJlDSjuCYabrpA6ml3v7z95KLSx90eqUH7TI7KGkCJU2gpAmUNIGSJlDSBo+Zxp77syO2+ke2g5ImUNIESppASRMoaQIlbaffZpruyc1Hq93gxdeXfr5zdbV77gQ7KGkCJU2gpAmUNIGSJlDSjJkmMRIaxQ5KmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpe4vFidFr2IR3zw9HL2FmJ8/fHr2ETbCDkiZQ0gRKmkBJEyhpAiVta8ZMZ89dHvj0h9ePz37Pa/c+zH7P6V7/9XTg06ezg5ImUNIESppASRMoaQIlbfCYaezwaLo/n83/MtSFS9vxOtLYgZQdlDSBkiZQ0gRKmkBJEyhp++u46bYMj5hi+l9zHQMpOyhpAiVNoKQJlDSBkiZQ0tbyNlNwzHT3919GL2FmN249Hr2ELxkzsXMESppASRMoaQIlTaCkreVtpqCDg4PZ7/nf5SXTtFNPt+PMo21hByVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkrYrZzOxAc5mYucIlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkvYZGHVZBCaGkKUAAAAASUVORK5CYII=", "justice": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOAAAADgCAIAAACVT/22AAADwklEQVR4nO3csWoUQQCAYSPapFLEoKWIYJVGQRCbvIBoYxUQX8DGUrAQLG18ARGsbBRfICBBELSxEkQsDYhob2PvLXKwl9v/vO8rh+zuZPmZYpi9jc3NrSNQdXTqCcC/CJQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNKOTT2Bxfv48e3UU5jM9vbVqaewYFZQ0gRKmkBJEyhpAiVNoKRtrMpvM63z5tFhWJUNKSsoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZJWPM3k4NJUgkecrKCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNJ8NLemfny4O/UU/rZz5/3soBWUNIGSJlDSBEqaQEkTKGnHpn38yB2lwd8SOth7NDv4/MPxMQ8K2r30e3bwzM792cH5X/KpS09mBwdf8t7Ty7ODg/tEgwYvH2QFJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSNvFHc0sz+InZSN++fpnzL8+eO7/wp480+H3c0sz/eZ0VlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJW5fTTCM9v/ds3A32Z4d2H98ed8+1YAUlTaCkCZQ0gZImUNIESpptprnYEpqKFZQ0gZImUNIESppASRMoaRNvM21vX512AutgpV+yFZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIESppASRMoaQIlTaCkCZQ0gZImUNIEStp/+NtMZ3buzw4e7D1a/kwO1eC/+f+xgpImUNIESppASRMoaQIlbWW2mV68fD3m8je/Rj39ws9Xo64f8vnkjTGXj3wht25eH3P50lhBSRMoaQIlTaCkCZQ0gZK2sbm5NeHjR+6VLM21KxcXfs/9d58Wfs+RTv96uJwH7dx5P+dfWkFJEyhpAiVNoKQJlDSBknYop5lWZfOIv3w/8WDM5YdxQsoKSppASRMoaQIlTaCkCZS0lfloblrBk0drwgpKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkvYHfyFMgyozTQsAAAAASUVORK5CYII="};
+const PORTRAITS = {};
+Object.keys(PORTRAIT_SRC).forEach(k=>{ const i=new Image(); i.src=PORTRAIT_SRC[k]; PORTRAITS[k]=i; });
+{ const _b=new Image(); _b.src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOAAAADgCAIAAACVT/22AAAD6klEQVR4nO3dP4sVVxyAYVcWAgu2ImmUxGLBb2Ah2KbSwk6Q+AG2yDaCYCEINlr4AQyBdBZapRVCyDdIZ/5sk1jYiYWdffYiA3fmnvd6n6cc7s457L6c4sfs3L2Dg/NnoOrs6A3A5wiUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDS9kdvYH4nJ3+M3sIwFy9eGb2FmTlBSRMoaQIlTaCkCZQ0gZK2ty3vZtrl4dEStmUg5QQlTaCkCZQ0gZImUNIESlpxzGSiNEpw9uQEJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUtMHvZlrzNUwr3yX09vWjiT/+8ZsbEz/51V+vJn5yuiVWv3D9/umLS/ySN8YJSppASRMoaQIlTaCkCZS0/dEbmN+5l39O/eSZJ4vuZPOrfzi6e/riu9mX2SAnKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGS9gU+zfT+5rcTPzn9uac1V9/YQqv/ae74ePbVN8YJSppASRMoaQIlTaCkCZS0L3DMNN30gdRK//29ani08uJ6C+0yJyhpAiVNoKQJlDSBkiZQ0gaPmca+XnpHbPUv2QlKmkBJEyhpAiVNoKQJlLSdfpppup+Pf1rvBr+dvnT7yZ317rkTnKCkCZQ0gZImUNIESppASTNmmsRIaBQnKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpO0dHJwfvYdNePv60egtzOzC9fujt7AJTlDSBEqaQEkTKGkCJU2gpG3NmOno0uWBq3//4Nrs9/zx4a+z33O6Z/+8Gbj6dE5Q0gRKmkBJEyhpAiVNoKQNHjONHR5Nd+/3X2a/5+Or381+zyWMHUg5QUkTKGkCJU2gpAmUNIGStr/ETbdleMQU0/+aSwyknKCkCZQ0gZImUNIESppASVvkaabgmOnG86ejtzCzV3d/GL2F/zNmYucIlDSBkiZQ0gRKmkBJW+RppqDDw8PZ7/nvrVunL3794sXsC+0yJyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlDSBkiZQ0gRKmkBJEyhpAiVNoKQJlLRd+ae5zX2t25Z8f9y2cIKSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEqaQEkTKGkCJU2gpAmUNIGSJlDSBEraJ1LnVG9KByEyAAAAAElFTkSuQmCC"; PORTRAITS["rousseau2"]=_b; }
+
+/* ================= 题库（严格对应 PPT） ================= */
+const QB = [
+/* 第一章 */
+{q:"西周金文中的『灋』字由哪几部分组成？",opts:["水、廌、去","水、廌、鼎","水、去、刃","廌、去、网"],a:0,exp:"氵表示『平之如水』，廌是善断的神兽獬豸，去指『触不直者去之』。"},
+{q:"中国古代把『律』字解释为『均布』，着重体现的含义是？",opts:["规范","刑罚","公平","正义"],a:2,exp:"『均布』即普遍适用、公平如一。"},
+{q:"春秋战国时期，集诸国刑典、改『刑』为『法』的是？",opts:["商鞅","李悝","子产","管仲"],a:1,exp:"李悝造《法经》六篇改『刑』为『法』；入秦后『改法为律』的才是商鞅。"},
+{q:"马克思主义认为，法的深层本质是：法的内容由____决定？",opts:["统治阶级意志","阶级斗争状况","特定社会的物质生活条件","历史传统"],a:2,exp:"初级本质是『统治阶级意志的体现』，深层本质是物质生活条件决定。注意题目问的是『深层』。"},
+{q:"马克思说：『对于法律来说，除了我的行为以外，我是根本不存在的。』这说明？",opts:["法调整人的思想","法调整的对象是人的行为","法不调整社会关系","法只调整犯罪行为"],a:1,exp:"法的基本特征之一：调整社会关系的行为规范，调整对象是人的行为而非思想。"},
+{q:"埃尔姆毒死祖父后仍持遗嘱要求继承，法官判其不能继承，依据的法律原则是？",opts:["诚实信用","等价有偿","任何人不得从其错误中获利","法律平等"],a:2,exp:"帕尔默案：规则无规定时适用法律原则——任何人不得从其错误中获利。"},
+{q:"《国旗法》第11条：『解放军和武警升挂使用国旗的办法，由中央军事委员会规定。』该规则属于？",opts:["确定性规则","委任性规则","准用性规则","任意性规则"],a:1,exp:"内容未定、授权他机关另行规定＝委任性规则；准用性是援引、参照其他条文（如刑诉法242条）。"},
+/* 第二章 */
+{q:"法律起源的社会契约论认为，人们缔结契约前所处的状态是？",opts:["文明状态","自然状态","专制状态","法治状态"],a:1,exp:"卢梭：人们原先处于自然状态，受自然法支配，经协议缔结契约建立国家，国家依自然法制定人定法。"},
+{q:"西方法学的『起源』阶段是？",opts:["古罗马","古希腊","中世纪","近代"],a:1,exp:"四阶段口诀：起源古希腊、奠基古罗马、接续中世纪后期、鼎盛近代。"},
+{q:"中世纪独立的法学消失了，但在谁的著述中保存和发展了古希腊罗马的法律思想？",opts:["奥古斯丁","阿奎那","西塞罗","马基雅维利"],a:1,exp:"阿奎那把希腊罗马法律思想糅合进神学（《神学大全》）。"},
+{q:"中世纪后期，以复兴罗马法为中心任务出现的法学流派是？",opts:["人文主义法学派","注释法学派","分析法学派","社会法学派"],a:1,exp:"13-14世纪商品经济发展需要法律，注释法学派复兴罗马法；人文主义法学派是文艺复兴时期的标志。"},
+{q:"标志着『作为独立学科的法学的出现』的流派是？",opts:["自然法学派","历史法学派","分析法学派","哲理法学派"],a:2,exp:"分析法学派的出现标志着作为独立学科的法学的出现。"},
+{q:"纽伦堡审判中，纳粹战犯不能以『执行法律』为由免责，这直接推动了？",opts:["分析法学派兴起","自然法的复兴","社会法学派衰落","历史法学派产生"],a:1,exp:"战后对『恶法亦法』的反思使自然法复兴——恶法非法，遵守恶法不是无辜的。"},
+/* 第三章 */
+{q:"甲学习了《道路交通安全法》后，喝酒找了代驾而不是自己开车。这体现法的？",opts:["评价作用","指引作用","强制作用","教育作用"],a:1,exp:"指引作用指向『自己的行为』；判断乙酒驾违法＝评价；想到刑罚放弃偷窃＝预测；判刑警示公众＝教育。"},
+{q:"『自由是做法律所许可的一切事情的权利』，这句话的作者是？",opts:["卢梭","洛克","孟德斯鸠","康德"],a:2,exp:"孟德斯鸠的名言：若公民能做法律禁止的事，人人皆然，自由将不复存在。"},
+{q:"『国家尊重和保障人权』于哪一年载入我国宪法？",opts:["1982年","1999年","2004年","2018年"],a:2,exp:"2004年入宪，体现社会主义民主的本质要求。"},
+{q:"主张『恶法亦法』的实证法学派，其正义取向更接近？",opts:["实质正义","形式正义","个案正义","抽象正义"],a:1,exp:"恶法非法→自然法学派→实质正义（重结果）；恶法亦法→实证法学派→形式正义（重规则被遵守）。"},
+{q:"关于法的局限性，下列说法错误的是？",opts:["法是许多社会调整方法中的一种","并非所有社会问题都适宜用法律解决","法具有僵化性和滞后性","只要立法完备，法就能独自解决一切社会问题"],a:3,exp:"法作用的充分发挥依赖一系列社会条件，D项说法绝对化，是典型的错误表述。"},
+{q:"《社会契约论》的作者是？",opts:["洛克","孟德斯鸠","卢梭","霍布斯"],a:2,exp:"让·雅克·卢梭，1762年出版《社会契约论》，又译《民约论》或《政治权利原理》。"},
+{q:"法律起源的社会契约论认为，法律产生于？",opts:["君主的绝对命令","公民与政府间互相缔结的契约","神的启示","民族历史传统的演化"],a:1,exp:"人们先处于自然状态、受自然法支配，经协议缔结契约建立国家，国家根据自然法制定人定法——法律是社会契约的结果。"},
+{q:"按社会契约论，人们缔结契约、建立国家时，让渡给国家的是？",opts:["全部财产的所有权","自身及自己的一切权利（在公意最高指导下）","仅纳税的义务","宗教信仰"],a:1,exp:"契约公式——『在公共意愿的最高指导下，我们每个人都将自身以及自己的一切权利转交出来，作为一个整体。』"},
+{q:"社会契约论认为，公民社会之所以『可能』建立，是因为？",opts:["个人利益之间的冲突","个人利益之间的协调统一之处","国家强制力的强大","自然状态的完美"],a:1,exp:"个人利益的冲突使公民社会成为必需，利益之间的协调统一使公民社会成为可能。必需≠可能，是本题核心陷阱。"},
+{q:"卢梭说社会将『迫使他服从公意』，『这恰好是在说，人们要迫使他自由』。这里的『自由』指？",opts:["为所欲为的自由","道德的自由——遵从自己参与制定的法律，而非做欲望的奴隶","摆脱法律的自由","经济上的自由"],a:1,exp:"人若只服从欲望便是欲望的奴隶；道德的自由使人成为自己真正的主人，前提是遵守自己参与制定的法律。"},
+{q:"根据PPT中卢梭的论述，下列说法错误的是？",opts:["国家以强制力（警察、监狱等暴力机关）保障法律运行","法律的良好运行还需要公民自觉遵守","只要国家强制力足够强大，公民是否认同法律无关紧要","拒不服从公意者，社会将迫使其服从"],a:2,exp:"强制力是保障，公民自觉遵守是良好运行的另一必要条件，『仅靠强制力即可』的说法绝对化，是错误表述。"}
+];
+
+/* ================= 隐藏Boss：卢梭 · 制霸！社会契约 ================= */
+const FINAL_BOSS = { name:"卢梭·制霸", title:"隐藏BOSS · 社会契约", sprite:"rousseau2", boss:true,
+  shout:"拒不服从公意者，社会将迫使他服从公意！", hp:6, q:[18,19,20,21,22,23] };
+const FINAL_CHAPTER = { title:"终局之战 · 制霸！社会契约", enemies:[FINAL_BOSS] };
+
+/* ================= 章节与敌人 ================= */
+const CHAPTERS = [
+ { title:"第一章 法的概念与本质", enemies:[
+   {name:"皋陶", title:"中国司法始祖", sprite:"gaoyao", shout:"神兽獬豸，触不直者去之！", hp:2, q:[0,1]},
+   {name:"李悝·商鞅", title:"改刑为法 · 改法为律", sprite:"likui", shout:"吾集诸国刑典，铸《法经》！", hp:1, q:[2]},
+   {name:"马克思·恩格斯", title:"章节BOSS · 法的本质", sprite:"marx", shout:"法是被奉为法律的统治阶级意志！", hp:2, q:[3,4]},
+   {name:"帕尔默案法官", title:"规则与原则之争", sprite:"judge", shout:"任何人不得从其错误中获利！", hp:2, q:[5,6]},
+ ]},
+ { title:"第二章 法的产生与历史", enemies:[
+   {name:"卢梭", title:"社会契约论", sprite:"rousseau", shout:"拒不服从公意者，社会将迫使他服从！", hp:1, q:[7]},
+   {name:"阿奎那", title:"中世纪神学集大成者", sprite:"aquinas", shout:"法律思想藏于神学之中，万古不灭！", hp:2, q:[8,9]},
+   {name:"奥斯丁", title:"分析法学派", sprite:"austin", shout:"法律即主权者之命令，恶法亦法！", hp:2, q:[10,11]},
+   {name:"纽伦堡审判长", title:"章节BOSS · 自然法复兴", sprite:"nuremberg", shout:"执行恶法，不是免责的理由！", hp:1, q:[12]},
+ ]},
+ { title:"第三章 法律的作用与价值", enemies:[
+   {name:"甲与乙", title:"指引·评价·预测·教育·强制", sprite:"jiayi", shout:"我学法用法，喝酒找代驾！", hp:1, q:[13]},
+   {name:"孟德斯鸠", title:"自由与平等", sprite:"montes", shout:"自由是做法律所许可的一切事情的权利！", hp:2, q:[14,15]},
+   {name:"正义女神", title:"终章BOSS · 形式与实质", sprite:"justice", shout:"形式正义？实质正义？你分得清吗！", hp:2, q:[16,17]},
+ ]},
+];
+
+/* ================= 存档 ================= */
+const SAVE_KEY = "fali_game_v1";
+function loadSave(){
+  try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {unlocked:1, done:{}, prog:null}; }
+  catch(e){ return {unlocked:1, done:{}, prog:null}; }
+}
+function writeSave(s){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(s)); }catch(e){/*存储不可用时静默跳过*/} }
+let SAVE = loadSave();
+
+/* ================= 状态 ================= */
+const S = { screen:"title", ch:0, ei:0, ehp:0, php:5, charge:0, q:null,
+            phase:"idle", t:0, tmax:10, shake:0, flash:0, floats:[], qi:0, correct:0, total:0, hover:-1, bossMode:false };
+
+const enemy = () => S.ch>=3 ? FINAL_BOSS : CHAPTERS[S.ch].enemies[S.ei];
+const chapter = () => S.ch>=3 ? FINAL_CHAPTER : CHAPTERS[S.ch];
+
+/* ================= 流程 ================= */
+function startChapter(ch){
+  S.ch = ch; S.ei = 0; S.php = 5; S.charge = 0; S.correct = 0; S.total = 0;
+  loadEnemy();
+}
+function loadEnemy(){
+  const E = enemy();
+  S.ehp = E.hp; S.qi = 0;
+  log(`<span class="gold">⚔ ${chapter().title}</span><br><span style="color:#8fd3ff">遭遇 ${E.name}（${E.title}）</span>　质疑力 ${E.hp} 格`);
+  nextQuestion();
+}
+function nextQuestion(){ S.q = QB[enemy().q[S.qi]]; S.q.hl=-1; S.q.lock=false; S.q.expShow=false; S.t=S.tmax; S.phase="question"; saveProg(); }
+function saveProg(){
+  SAVE.prog = {ch:S.ch, ei:S.ei, ehp:S.ehp, php:S.php, charge:S.charge, qi:S.qi, correct:S.correct, total:S.total};
+  writeSave(SAVE);
+}
+function answer(i){
+  if(S.q.lock) return;
+  S.q.lock = true; S.q.hl = i; S.q.expShow = true; S.total++;
+  if(i === S.q.a){
+    S.correct++; S.ehp--; S.charge = Math.min(3, S.charge+1);
+    S.shake=1; S.flash=8; floatText(W-200,130,"反驳成功!!","#57cc99");
+    log(`<span style="color:#57cc99">✔ 反驳成功！</span>${S.q.exp}<br>质疑力 -1　极技 ${S.charge}/3`);
+  } else {
+    S.php--; S.shake=1; floatText(430,H-100,"被驳倒!","#ff6b6b");
+    log(`<span style="color:#ff6b6b">✘ 回答错误！正确答案是 ${"ABCD"[S.q.a]}</span><br>${S.q.exp}<br>发言力 -1`);
+  }
+  setTimeout(nextTurn, 1800);
+}
+function nextTurn(){
+  if(S.ehp<=0){
+    if(S.ei >= chapter().enemies.length-1){
+      SAVE.done[S.ch] = true;
+      SAVE.unlocked = Math.max(SAVE.unlocked, Math.min(3, S.ch+2));
+      if(S.ch===2 && !S.bossMode){
+        S.bossMode = true; S.ch = 3; S.ei = 0; S.php = 5; S.charge = 0; S.qi = 0;
+        SAVE.prog = null; writeSave(SAVE);
+        log('<span style="color:#ff6b6b">★ 隐藏Boss突入！</span>卢梭 · 制霸！社会契约 —— 发言力回满，终极辩论开始！');
+        loadEnemy(); return;
+      }
+      if(S.ch>=3) SAVE.done["boss"] = true;
+      SAVE.prog = null; writeSave(SAVE);
+      S.screen = "win";
+      return;
+    }
+    S.ei++; S.qi=0; loadEnemy(); return;
+  }
+  if(S.php<=0){ SAVE.prog=null; writeSave(SAVE); S.screen="lose"; return; }
+  S.qi = (S.qi+1) % enemy().q.length;
+  nextQuestion();
+}
+function ult(){
+  if(S.charge<3 || !S.q || S.q.lock) return;
+  S.charge=0; S.q.lock=true; S.q.expShow=true;
+  S.ehp=Math.max(0,S.ehp-2); S.shake=2; S.flash=10;
+  floatText(W-200,110,"正义一击!!","#ffd166");
+  log(`<span style="color:#ffd166">★ 发动极技『正义一击』！</span>质疑力 -2`);
+  setTimeout(nextTurn, 1800);
+}
+
+/* ================= 绘制 ================= */
+function bar(x,y,n,max,c1){
+  for(let i=0;i<max;i++){
+    ctx.fillStyle = i<n?c1:"#3a3f5e"; ctx.fillRect(x+i*40,y,34,14);
+    ctx.strokeStyle="#0f1020"; ctx.lineWidth=2; ctx.strokeRect(x+i*40,y,34,14);
+  }
+}
+function floatText(x,y,s,c){ S.floats.push({x,y,s,c,t:60}); }
+
+function drawTitle(){
+  ctx.textAlign="center";
+  ctx.fillStyle="#8fd3ff"; ctx.font="bold 32px Microsoft YaHei"; ctx.fillText("课堂大乱斗：法理篇", W/2, 90);
+  ctx.fillStyle="#ffd166"; ctx.font="16px Microsoft YaHei"; ctx.fillText("以答题为剑，驳倒历代思想家与法学家！", W/2, 122);
+
+  /* 章节按钮 */
+  for(let i=0;i<3;i++){
+    const bx = 90 + i*235, by = 160, bw = 210, bh = 120;
+    const locked = i+1 > SAVE.unlocked;
+    ctx.fillStyle = locked ? "#22243a" : "#2f3350";
+    ctx.fillRect(bx,by,bw,bh);
+    ctx.strokeStyle = locked ? "#3a3f5e" : "#8fd3ff"; ctx.lineWidth=3; ctx.strokeRect(bx,by,bw,bh);
+    ctx.fillStyle = locked ? "#555a78" : "#e8e8f0"; ctx.font="bold 15px Microsoft YaHei";
+    ctx.fillText(CHAPTERS[i].title, bx+bw/2, by+34);
+    ctx.font="13px Microsoft YaHei";
+    ctx.fillStyle = locked ? "#555a78" : "#8899bb";
+    ctx.fillText(locked ? "🔒 未解锁" : `${CHAPTERS[i].enemies.length} 名敌人 · ${CHAPTERS[i].enemies.reduce((s,e)=>s+e.hp,0)} 题`, bx+bw/2, by+62);
+    if(SAVE.done[i]){ ctx.fillStyle="#57cc99"; ctx.fillText("✔ 已通过", bx+bw/2, by+88); }
+    if(!locked && SAVE.prog && SAVE.prog.ch===i){ ctx.fillStyle="#ffd166"; ctx.fillText("● 有存档", bx+bw/2, by+108); }
+  }
+  if(SAVE.prog){
+    ctx.fillStyle="#ffd166"; ctx.font="bold 16px Microsoft YaHei";
+    ctx.fillText("▶ 点击对应章节继续上次进度（自动续战）", W/2, 330);
+  }
+  if(SAVE.prog && SAVE.prog.ch>=3){
+    ctx.fillStyle="#6b1f2a"; ctx.fillRect(W/2-170,338,340,36);
+    ctx.strokeStyle="#ff6b6b"; ctx.lineWidth=3; ctx.strokeRect(W/2-170,338,340,36);
+    ctx.fillStyle="#ffd166"; ctx.font="bold 15px Microsoft YaHei";
+    ctx.fillText("★ 隐藏Boss战进行中 · 点击此处续战", W/2, 362);
+  }
+  if(SAVE.done["boss"]){
+    ctx.fillStyle="#ffd166"; ctx.font="bold 18px Microsoft YaHei";
+    ctx.fillText("👑 全制霸达成：社会契约已被征服！", W/2, 402);
+  }
+  ctx.fillStyle="#8899bb"; ctx.font="13px Microsoft YaHei";
+  ctx.fillText("鼠标点击 / 数字键1-4 作答　空格键 发动极技", W/2, 380);
+  ctx.fillStyle="#555a78"; ctx.font="12px Microsoft YaHei";
+  ctx.fillText("（页面下方灰色横条为重置存档区）", W/2, 410);
+  ctx.fillStyle="#3a3f5e"; ctx.fillRect(W/2-80, 425, 160, 26);
+  ctx.fillStyle="#ff6b6b"; ctx.fillText("重置全部进度", W/2, 443);
+  ctx.textAlign="left";
+}
+
+function drawBattle(){
+  const E = enemy();
+  /* 顶栏 */
+  ctx.fillStyle="#252a45"; ctx.fillRect(0,0,W,44);
+  ctx.fillStyle="#8fd3ff"; ctx.font="14px Microsoft YaHei";
+  ctx.fillText(`⚔ ${chapter().title}`, 14, 28);
+  ctx.textAlign="right";
+  ctx.fillText(`${E.boss?"★BOSS":"遭遇"} ${S.ei+1}/${chapter().enemies.length}　正确 ${S.correct}/${S.total}`, W-16, 28);
+  ctx.textAlign="left";
+
+  /* 敌方 */
+  ctx.fillStyle="#ff9d76"; ctx.font="12px Microsoft YaHei"; ctx.fillText("敌方", 20, 66);
+  ctx.fillStyle="#ffd166"; ctx.font="bold 16px Microsoft YaHei"; ctx.fillText(`${E.name} · ${E.title}`, 60, 66);
+  bar(560, 54, S.ehp, E.hp, "#e5484d");
+  ctx.fillStyle="#ff6b6b"; ctx.font="12px Microsoft YaHei"; ctx.fillText("质疑力", 560, 84);
+
+
+  /* 台词气泡 */
+  ctx.fillStyle="#2f3350"; ctx.fillRect(20,100,420,44);
+  ctx.strokeStyle="#565b7c"; ctx.lineWidth=2; ctx.strokeRect(20,100,420,44);
+  ctx.fillStyle="#ffb4a2"; ctx.font="13px Microsoft YaHei";
+  ctx.fillText(`${E.name}：「${E.shout}」`, 30, 126);
+
+  /* 题目卡 */
+  ctx.fillStyle="#f4f1de"; ctx.fillRect(20,160,W-40,64);
+  ctx.strokeStyle="#3a3f5e"; ctx.lineWidth=3; ctx.strokeRect(20,160,W-40,64);
+  ctx.fillStyle="#1a1c2c"; ctx.font="bold 15px Microsoft YaHei";
+  const qt = "【敌方攻击】" + S.q.q, maxw = 556;
+  if(ctx.measureText(qt).width <= maxw){ ctx.fillText(qt, 34, 188); }
+  else {
+    let cut = qt.length;
+    while(cut>0 && ctx.measureText(qt.slice(0,cut)).width > maxw) cut--;
+    ctx.fillText(qt.slice(0,cut), 34, 180);
+    ctx.fillText(qt.slice(cut), 34, 198);
+  }
+  const ratio = Math.max(0, S.t/S.tmax);
+  ctx.fillStyle="#3a3f5e"; ctx.fillRect(34,206,300,10);
+  ctx.fillStyle = ratio>0.4?"#57cc99":"#e5484d"; ctx.fillRect(34,206,300*ratio,10);
+  ctx.strokeStyle="#0f1020"; ctx.strokeRect(34,206,300,10);
+  ctx.fillStyle="#e5484d"; ctx.font="12px Microsoft YaHei"; ctx.fillText(S.t.toFixed(1)+"s", 344, 216);
+
+  /* 选项 */
+  S.q.opts.forEach((o,i)=>{
+    const ox = 20+(i%2)*(W/2-14), oy = 240+Math.floor(i/2)*52, w = W/2-34, h = 44;
+    const sel = S.hover===i, hl = S.q.hl===i, lock = S.q.lock;
+    ctx.fillStyle = hl ? "#c7f464" : "#2f3350";
+    ctx.strokeStyle = hl ? "#8fd3ff" : (sel && !lock ? "#8fd3ff" : "#565b7c");
+    ctx.lineWidth=3; ctx.fillRect(ox,oy,w,h); ctx.strokeRect(ox,oy,w,h);
+    ctx.fillStyle = hl ? "#1a1c2c" : "#e8e8f0"; ctx.font="bold 14px Microsoft YaHei";
+    ctx.fillText(`${"ABCD"[i]}. ${o}`, ox+14, oy+28);
+  });
+
+  if(S.q.expShow){
+    ctx.fillStyle="#2f3350"; ctx.fillRect(20,352,W-40,40);
+    ctx.strokeStyle="#565b7c"; ctx.lineWidth=2; ctx.strokeRect(20,352,W-40,40);
+    ctx.fillStyle="#c7f464"; ctx.font="13px Microsoft YaHei";
+    ctx.fillText("📖 " + S.q.exp, 34, 377);
+  }
+
+  /* 敌方 FC 风像素头像 */
+  const spr = PORTRAITS[E.sprite], dw=140, dh=140, sx=W-36-dw, sy=72;
+  ctx.drawImage(spr, sx, sy, dw, dh);
+  if(S.flash>0){ ctx.globalAlpha=S.flash/10; ctx.fillStyle="#fff"; ctx.fillRect(sx,sy,dw,dh); ctx.globalAlpha=1; }
+
+  /* 玩家区 */
+  ctx.fillStyle="#252a45"; ctx.fillRect(0,H-58,W,58);
+  ctx.fillStyle="#c7f464"; ctx.font="bold 14px Microsoft YaHei"; ctx.fillText("玩家：法学新生", 14, H-34);
+  ctx.drawImage(SPRITES.player, 200, H-86);
+  ctx.fillStyle="#8fd3ff"; ctx.font="12px Microsoft YaHei"; ctx.fillText("发言力", 330, H-40);
+  bar(380, H-50, S.php, 5, "#57cc99");
+  ctx.fillStyle="#ffd166"; ctx.font="12px Microsoft YaHei"; ctx.fillText("极技:正义一击", 330, H-20);
+  ctx.fillStyle="#3a3f5e"; ctx.fillRect(440, H-28, 220, 12);
+  ctx.fillStyle="#ffd166"; ctx.fillRect(440, H-28, 220*S.charge/3, 12);
+  ctx.strokeStyle="#0f1020"; ctx.strokeRect(440, H-28, 220, 12);
+  /* 极技按钮（支持触屏点击） */
+  ctx.fillStyle = S.charge>=3 ? "#6b1f2a" : "#2a2d45";
+  ctx.fillRect(672, H-40, 158, 30);
+  ctx.strokeStyle = S.charge>=3 ? "#ff6b6b" : "#565b7c"; ctx.lineWidth=3;
+  ctx.strokeRect(672, H-40, 158, 30);
+  ctx.fillStyle = S.charge>=3 ? "#ffd166" : "#555a78";
+  ctx.font="bold 14px Microsoft YaHei"; ctx.textAlign="center";
+  ctx.fillText(S.charge>=3 ? "⚡ 发动极技!" : "极技充能中", 751, H-20);
+  ctx.textAlign="left";
+
+  S.floats.forEach(f=>{
+    ctx.globalAlpha=f.t/60; ctx.fillStyle=f.c; ctx.font="bold 22px Microsoft YaHei";
+    ctx.textAlign="center"; ctx.fillText(f.s, f.x, f.y-(60-f.t)*0.8); ctx.textAlign="left"; ctx.globalAlpha=1;
+  });
+}
+
+function drawOverlay(title, c1, sub){
+  ctx.fillStyle="rgba(10,10,25,0.85)"; ctx.fillRect(0,0,W,H);
+  ctx.textAlign="center";
+  ctx.fillStyle=c1; ctx.font="bold 34px Microsoft YaHei"; ctx.fillText(title, W/2, H/2-16);
+  ctx.fillStyle="#e8e8f0"; ctx.font="15px Microsoft YaHei"; ctx.fillText(sub, W/2, H/2+20);
+  ctx.fillStyle="#8fd3ff"; ctx.font="14px Microsoft YaHei";
+  ctx.fillText(S.screen==="chclear" ? "— 点击进入下一章 —" : "— 点击返回标题 —", W/2, H/2+52);
+  ctx.textAlign="left";
+}
+
+function draw(){
+  ctx.save();
+  if(S.shake>0) ctx.translate((Math.random()-0.5)*S.shake*8,(Math.random()-0.5)*S.shake*8);
+  ctx.fillStyle="#1a1c2c"; ctx.fillRect(-10,-10,W+20,H+20);
+
+  if(S.screen==="title"){ drawTitle(); ctx.restore(); return; }
+  if(S.screen==="battle"){ drawBattle(); ctx.restore(); return; }
+  drawBattle();
+  if(S.screen==="chclear") drawOverlay(`${chapter().title} · 通过！`, "#57cc99", `本章正确率 ${S.total?Math.round(S.correct/S.total*100):0}%（${S.correct}/${S.total}）`);
+  if(S.screen==="win")    drawOverlay(S.bossMode?"👑 制霸！社会契约已被你征服！":"全部章节通过！", "#57cc99", `总正确率 ${S.total?Math.round(S.correct/S.total*100):0}%（${S.correct}/${S.total}）`);
+  if(S.screen==="lose")   drawOverlay("发言力耗尽……被驳倒了", "#ff6b6b", "点击返回标题，可重新挑战本章");
+  ctx.restore();
+}
+
+/* ================= 输入 ================= */
+function resumeProg(){
+  const p = SAVE.prog;
+  S.ch=p.ch; S.ei=p.ei; S.ehp=p.ehp; S.php=p.php; S.charge=p.charge; S.qi=p.qi;
+  S.correct=p.correct; S.total=p.total; S.bossMode=(p.ch>=3); S.screen="battle";
+  log(`<span style="color:#ffd166">● 续战：</span>${chapter().title} — ${enemy().name}`);
+  nextQuestion();
+}
+
+cv.addEventListener('click', e=>{
+  const r = cv.getBoundingClientRect();
+  const mx=(e.clientX-r.left)*W/r.width, my=(e.clientY-r.top)*H/r.height;
+
+  if(S.screen==="title"){
+    if(mx>=W/2-80 && mx<=W/2+80 && my>=425 && my<=451){
+      SAVE = {unlocked:1, done:{}, prog:null}; writeSave(SAVE);
+      log("已重置全部进度"); return;
+    }
+    if(SAVE.prog && SAVE.prog.ch>=3 && mx>=W/2-170 && mx<=W/2+170 && my>=338 && my<=374){ resumeProg(); return; }
+    for(let i=0;i<3;i++){
+      const bx=90+i*235, by=160;
+      if(mx>=bx && mx<=bx+210 && my>=by && my<=by+120){
+        if(i+1 > SAVE.unlocked){ log("该章尚未解锁，请先通过上一章"); return; }
+        if(SAVE.prog && SAVE.prog.ch===i){ resumeProg(); return; }
+        S.screen="battle"; startChapter(i); return;
+      }
+    }
+    return;
+  }
+  if(S.screen==="chclear"){ S.screen="battle"; startChapter(S.ch+1); return; }
+  if(S.screen==="lose"){
+    if(S.bossMode){ S.php=5; S.charge=0; loadEnemy(); S.screen="battle"; return; }
+    S.screen="title"; return;
+  }
+  if(S.screen==="win"){ S.screen="title"; return; }
+  /* battle */
+  if(S.charge>=3 && mx>=672 && mx<=830 && my>=H-40 && my<=H-10){ ult(); return; }
+  S.q && S.q.opts.forEach((o,i)=>{
+    const ox=20+(i%2)*(W/2-14), oy=240+Math.floor(i/2)*52;
+    if(mx>=ox && mx<=ox+W/2-34 && my>=oy && my<=oy+44) answer(i);
+  });
+});
+cv.addEventListener('mousemove', e=>{
+  if(S.screen!=="battle") return;
+  const r=cv.getBoundingClientRect();
+  const mx=(e.clientX-r.left)*W/r.width, my=(e.clientY-r.top)*H/r.height;
+  S.hover=-1;
+  S.q && S.q.opts.forEach((o,i)=>{
+    const ox=20+(i%2)*(W/2-14), oy=240+Math.floor(i/2)*52;
+    if(mx>=ox && mx<=ox+W/2-34 && my>=oy && my<=oy+44) S.hover=i;
+  });
+});
+addEventListener('keydown', e=>{
+  if(e.key===" "){ e.preventDefault(); if(S.screen==="battle") ult(); return; }
+  if(S.screen==="title" || !S.q) return;
+  const n = parseInt(e.key);
+  if(n>=1 && n<=4) answer(n-1);
+});
+
+/* ================= 主循环 ================= */
+let last = performance.now();
+function loop(now){
+  const dt = Math.min(0.05,(now-last)/1000); last = now;
+  if(S.screen==="battle" && S.phase==="question" && S.q && !S.q.lock){
+    S.t -= dt;
+    if(S.t<=0){
+      S.q.lock=true; S.q.hl=-1; S.q.expShow=true; S.total++; S.php--;
+      S.shake=1; floatText(430,H-100,"超时未答!","#ff6b6b");
+      log(`<span style="color:#ff6b6b">⏰ 超时！</span>正确答案是 ${"ABCD"[S.q.a]}，发言力 -1`);
+      setTimeout(nextTurn, 1800);
+    }
+  }
+  S.shake*=0.85; if(S.flash>0)S.flash--;
+  S.floats = S.floats.filter(f=>--f.t>0);
+  draw();
+  requestAnimationFrame(loop);
+}
+log("欢迎来到课堂大乱斗：法理篇！选择章节开始辩论。");
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
